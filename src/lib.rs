@@ -33,16 +33,16 @@ impl<T: PartialEq + Eq + Hash + Clone + Display + Debug> Graph<T> {
         Self::overlays(vs.into_iter().map(|value| Self::vertex(value)).collect())
     }
 
-    pub fn overlay(self, y: Self) -> Self {
-        Graph::Overlay(Box::new(self), Box::new(y))
+    pub fn overlay(self, other: Self) -> Self {
+        Graph::Overlay(Box::new(self), Box::new(other))
     }
 
     pub fn overlays(xs: Vec<Graph<T>>) -> Self {
         xs.into_iter().fold(Graph::empty(), |y, x| x + y)
     }
 
-    pub fn connect(self: Self, y: Self) -> Self {
-        Graph::Connect(Box::new(self), Box::new(y))
+    pub fn connect(self: Self, other: Self) -> Self {
+        Graph::Connect(Box::new(self), Box::new(other))
     }
 
     pub fn connects(xs: Vec<Graph<T>>) -> Self {
@@ -54,45 +54,45 @@ impl<T: PartialEq + Eq + Hash + Clone + Display + Debug> Graph<T> {
     }
 
     pub fn foldg<U>(
-        x: Graph<T>,
+        self,
         empty: &dyn Fn() -> U,
         vertex: &dyn Fn(T) -> U,
         overlay: &dyn Fn(U, U) -> U,
         connect: &dyn Fn(U, U) -> U,
     ) -> U {
-        match x {
+        match self {
             Graph::Empty => empty(),
             Graph::Vertex(v) => vertex(v),
-            Graph::Overlay(y, z) => overlay(
+            Graph::Overlay(x, y) => overlay(
+                Graph::foldg(*x, empty, vertex, overlay, connect),
                 Graph::foldg(*y, empty, vertex, overlay, connect),
-                Graph::foldg(*z, empty, vertex, overlay, connect),
             ),
-            Graph::Connect(y, z) => connect(
+            Graph::Connect(x, y) => connect(
+                Graph::foldg(*x, empty, vertex, overlay, connect),
                 Graph::foldg(*y, empty, vertex, overlay, connect),
-                Graph::foldg(*z, empty, vertex, overlay, connect),
             ),
         }
     }
 
-    fn simple(x: Graph<T>, y: Graph<T>, op: &dyn Fn(Graph<T>, Graph<T>) -> Graph<T>) -> Graph<T> {
-        let z = op(x.clone(), y.clone());
+    fn simple(self, other: Graph<T>, op: &dyn Fn(Graph<T>, Graph<T>) -> Graph<T>) -> Graph<T> {
+        let new = op(self.clone(), other.clone());
 
-        if x == z {
-            x
-        } else if y == z {
-            y
+        if self == new {
+            self
+        } else if other == new {
+            other
         } else {
-            z
+            new
         }
     }
 
-    pub fn simplify(&self) -> Graph<T> {
+    pub fn simplify(self) -> Graph<T> {
         Self::foldg(
-            self.clone(),
+            self,
             &Self::empty,
             &Self::vertex,
-            &|y, z| Self::simple(y, z, &Self::overlay),
-            &|y, z| Self::simple(y, z, &Self::connect),
+            &|x, y| Self::simple(x, y, &Self::overlay),
+            &|x, y| Self::simple(x, y, &Self::connect),
         )
     }
 
@@ -119,6 +119,23 @@ impl<T: PartialEq + Eq + Hash + Clone + Display + Debug> Graph<T> {
                     .flat_map(|vx| iter::repeat(vx.clone()).zip(y.vertex_set()))
             ),
         }
+    }
+
+    pub fn canonical(self) -> Self {
+        let vertices = self.vertex_set();
+        let edges = self.edge_set();
+
+        let mut new = Graph::empty();
+
+        for v in vertices {
+            new = new + vertex!(v.clone());
+        }
+
+        for (v1, v2) in edges {
+            new = new + vertex!(v1.clone()) * vertex!(v2.clone());
+        }
+
+        new
     }
 }
 
@@ -176,6 +193,8 @@ macro_rules! vertex {
     };
 }
 
+// impl
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,10 +232,26 @@ mod tests {
     }
 
     #[test]
+    fn vertex_set() {
+        let x = vertex!(1) * (vertex!(2) + vertex!(3));
+        let y = x.vertex_set();
+
+        assert_eq!(y, HashSet::from([1, 2, 3]));
+    }
+
+    #[test]
     fn edge_set() {
         let x = vertex!(1) * (vertex!(2) + vertex!(3));
         let y = x.edge_set();
 
         assert_eq!(y, HashSet::from([(1, 2), (1, 3)]));
+    }
+
+    #[test]
+    fn canonical() {
+        let x = vertex!(1) * (vertex!(2) + vertex!(3));
+        let y = x.clone().canonical();
+
+        assert_eq!(x, y);
     }
 }

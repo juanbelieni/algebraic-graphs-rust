@@ -29,4 +29,10 @@ fn main() {
 
     let x = (vertex!(1) * (vertex!(2) + vertex!(3)) + vertex!(2) * vertex!(3)).simplify();
     println!("{}", x);
+
+    let x = vertex!(1);
+    let y = vertex!(2);
+
+    let z = x.clone() + y.clone();
+    println!("{} + {} = {}", x, y, z);
 }
